@@ -10,7 +10,7 @@ No cluster paths, no private data — everything needed either ships in
 - AIFS-ENS v2: `https://data.ecmwf.int/forecasts` (ECMWF public open-data feed),
   or your own cluster's AIFS run (`--aifs-zarr`)
 - NCMRWF (NEPS): the NCMRWF data portal `https://cloud.ncmrwf.gov.in` (needs
-  your API key), or files already on your machine (`--ncmrwf-file`)
+   API key), or files already on your machine (`--ncmrwf-file`)
 
 ## Configs
 
@@ -88,8 +88,8 @@ and the DRY/WET event probabilities. Its forecast days are checked against
 ### NCMRWF portal API key
 
 The portal (`https://cloud.ncmrwf.gov.in`) uploads each day's files around
-12:00. Give the pipeline your key in **one** of these ways — never on the
-command line (it would end up in your shell history), and never commit it:
+12:00. Give the pipeline our key in **one** of these ways — never on the
+command line (it would end up in our shell history), and never commit it:
 
 ```bash
 # Recommended, once: type the key at a hidden prompt (not echoed, not saved in shell history)
