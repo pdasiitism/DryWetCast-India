@@ -1,0 +1,10 @@
+numpy>=2.0
+rasterio>=1.3
+xarray>=2024.1
+netCDF4>=1.6
+scipy>=1.11
+xgboost>=3.0
+matplotlib>=3.8
+requests>=2.31
+zarr>=2.16          # reads AIFS from a cluster .zarr store (--aifs-zarr)
+pytest>=7           # offline test suite: python -m pytest tests

@@ -1,0 +1,22 @@
+# Conda alternative to requirements.txt — use this on clusters whose system
+# Python is older than 3.10 or where pip wheels fail against old system
+# libraries. Conda installs its own Python and libraries in the environment.
+#
+#   conda env create -f environment.yml
+#   conda activate dry-wet-forecast
+#   python run_forecast.py --check
+name: dry-wet-forecast
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy>=2.0
+  - rasterio>=1.3
+  - xarray>=2024.1
+  - netcdf4>=1.6
+  - scipy>=1.11
+  - xgboost>=3.0
+  - matplotlib>=3.8
+  - requests>=2.31
+  - zarr>=2.16
+  - pytest>=7
