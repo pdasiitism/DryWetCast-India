@@ -299,52 +299,12 @@ both naming styles, wrong key, not-yet-uploaded, truncated download, error
 page, missing key — and that the key never appears in an error message).
 It never reads your real API key.
 
-## Handing off to an external partner (e.g. NCMRWF)
+## Things to consider
 
-They only need the configs they run, but the code is small and shared, so
-trim only `models/`. Copy: the whole `pipeline/` folder (every module is used
-by every config — GEFS supplies the atmosphere even for NCMRWF configs),
-`run_forecast.py`, `requirements.txt`, `environment.yml`, `README.md`, and
-from `models/`: `land_mask.npy` plus the config folders they'll run (e.g.
-`ncmrwf_reduced/`; add `climatology.npz` for any `*_full` config). They then
-run `python run_forecast.py --check`, which confirms nothing is missing.
-(A `make_handoff.py` script to automate this is a planned addition, not built yet.)
-
-## Verified against the original experiments
-
-Test case: init 2025-11-14 00Z (2025 was a held-out test year), all four
-configs, run from raw inputs (GEFS from NOAA, AIFS from the cluster zarr,
-NCMRWF files), compared cell by cell with the predictions the original
-experiments (Exp8/9/14/15) saved for that day:
-
-- every input feature matches the training feature matrix (differences at
-  float-rounding level only, e.g. 0.0015 m on ~5800 m 500 hPa heights);
-- forecast probabilities: correlation 1.000000, mean difference 1e-8 to 2e-6,
-  99.94-100% of land cells within 0.001 (max 0.005, a few isolated cells
-  where float rounding tips a tree split);
-- skill against IMD observations for that day identical to the original
-  experiments to 3 decimals for all 8 fields;
-- the same run on macOS and on Linux agrees to within 6e-8.
-
-For the NCMRWF configs these figures compare against the 2025 reference as
-it was built, which also mixed the `.lag.nc` members into the event
-probability. The pipeline uses the `.nc` file alone, like training; on this
-day that moves NCMRWF probabilities by 0.0003-0.0011 on average (max 0.15 in
-a few cells), with the same Brier score to 3 decimals.
-
-## Known limitations
-
-- Trained on and intended for the post-monsoon window (mid-October to
-  late-December); forecasts outside that season are extrapolation.
-- AIFS-ENS v2's D5 daily window needs lead hour +126h in addition to the
-  native 6-hourly steps out to +120h — `download_aifs.py` fetches both.
-- ECMWF's open-data feed only retains a rolling window of recent cycles —
-  older cycles (a few days back) may start returning 404s for some leads.
-- The NCMRWF portal downloader was built from the portal's own web API. It is
-  tested offline against a stand-in server (`tests/`) and has been run against
-  the live portal (2025 and real-time 2026 files).
-- The NCMRWF models were trained (2021-2024) on NCMRWF's older 11-member GRIB
-  product; the operational NetCDF file (23 members, used here) only exists
-  from 2025. The 2025 test-year scores already reflect running the
-  models on the NetCDF product, but it is a change of input product
-  relative to training.
+- The models were trained for the post-monsoon period, from mid-October to
+  late December. Forecasts outside this period should be treated as
+  extrapolation.
+- ECMWF retains only a rolling window of recent AIFS cycles, so older forecast
+  dates may no longer be available from the open-data feed.
+- The NCMRWF models were trained on the older 11-member GRIB product, while
+  operational forecasts use the newer 23-member NetCDF product.
