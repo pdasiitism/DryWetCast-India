@@ -1,0 +1,26 @@
+# Downloaded raw data and caches (never commit — ~1 GB per cycle)
+_scratch*/
+gefs_*_*z/
+aifs_*_*z/
+ncmrwf_2*/
+.regrid_cache/
+*.part
+
+# Forecast outputs (default location + common output folders)
+/forecast_product_dry_wet.png
+/forecast_product_dry_wet.npz
+outputs/
+archive/
+
+# Secrets — the NCMRWF API key must never be committed
+.ncmrwf_api_key
+*.key
+.env
+
+# Logs, Python and editor clutter
+slurm/logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
