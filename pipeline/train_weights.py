@@ -44,9 +44,11 @@ XGB_PARAMS = dict(
 )
 
 # Root of the historical experiment outputs (feature matrices + LASSO masks).
+# verification_v2 = rebuilt Sep 2026 with WET >= 1 mm for GEFS too (was > 1 mm),
+# so every source and the IMD labels share one event definition.
 # These are NOT part of the repo — retraining is only needed if the shipped
 # weights in models/ are lost. Override with VERIFICATION_ROOT=/path/to/verification.
-ROOT = os.environ.get('VERIFICATION_ROOT', '/net/monsoon/prabal/verification')
+ROOT = os.environ.get('VERIFICATION_ROOT', '/net/monsoon/prabal/verification_v2')
 
 # Per-config: where to load the feature matrix from, and (for Reduced only)
 # where the LASSO mask lives. Full configs have no mask source — all columns

@@ -111,7 +111,12 @@ def compute_gefs_mos(cycle_root: str, cycle_hour: str | None = None):
 
 
 def compute_gefs_event_prob(cycle_root: str, cycle_hour: str | None = None):
-    """Return (prob_dry_event, prob_wet_event): each (129,135) — matches extract_gefs_event_frac_exp6.py."""
+    """Return (prob_dry_event, prob_wet_event): each (129,135) — matches extract_gefs_event_frac_v2.py.
+
+    DRY: 3-consecutive-dry-day spell (< 1 mm) starting within D1-D3.
+    WET: any day >= 1 mm within D1-D5 (same as AIFS, NCMRWF and the IMD labels;
+    the original Exp6 extraction used > 1 mm, and the models were retrained).
+    """
     cycle_hour = cycle_hour or _detect_cycle_hour(cycle_root)
     member_fields = _load_all_members(cycle_root, cycle_hour, EVENT_MEMBERS)
     if len(member_fields) < 20:
@@ -121,7 +126,7 @@ def compute_gefs_event_prob(cycle_root: str, cycle_hour: str | None = None):
     for daily in member_fields:
         dry = daily < DRY_MM
         event_dry = (dry[0] & dry[1] & dry[2]) | (dry[1] & dry[2] & dry[3]) | (dry[2] & dry[3] & dry[4])
-        event_wet = (daily > DRY_MM).any(axis=0)
+        event_wet = (daily >= DRY_MM).any(axis=0)
         dry_flags.append(event_dry)
         wet_flags.append(event_wet)
     prob_dry = np.stack(dry_flags).astype(np.float32).mean(axis=0)
