@@ -32,7 +32,9 @@ EVENT_MEMBERS = [f'gep{i:02d}' for i in range(1, 31)]               # 30 — mat
 
 _LEAD_BASES = [3, 27, 51, 75, 99]
 APCP_LEADS = sorted({lead for b in _LEAD_BASES for lead in [b, b + 3, b + 9, b + 15, b + 21, b + 24]})
-ATMOS_LEADS = [27, 30, 36, 42, 48, 51, 54, 60, 66, 72, 75, 78, 84, 90, 96, 99, 102, 108, 114, 120, 123]
+# Every 3 h from f003 to f123 (41 snapshots): the same D1-D5 window as the rainfall
+# (03Z-03Z days), evenly weighted — as extract_atmos_future_v3.py (verification_v3).
+ATMOS_LEADS = list(range(3, 124, 3))
 
 
 def _detect_cycle_hour(cycle_root: str) -> str:
@@ -153,7 +155,7 @@ def _atmos_paths(cycle_root, cycle_hour):
 def compute_gefs_pwat_cape(cycle_root: str, cycle_hour: str | None = None):
     """Return (pw_mean, cape_mean, cape_spread): each (129,135).
 
-    Matches extract_atmos_future_exp6.py's "future-mean over D1-D5 leads",
+    Matches extract_atmos_future_v3.py's "future-mean over D1-D5 leads" (41 leads, f003-f123),
     restricted to PWAT and CAPE (the only two non-rainfall vars the Reduced
     models use).
     """
