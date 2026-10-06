@@ -89,6 +89,9 @@ def _download_perturbed(args):
     """One lead's pf file holds all 50 members — fetch the index once, then
     range-GET each member's tp message."""
     date, cycle, lead, out_dir, session = args
+    have = [_out_path(out_dir, f'aifs_p{m:02d}', cycle, lead) for m in range(1, 51)]
+    if all(os.path.exists(p) for p in have):   # already downloaded: no network needed
+        return have                           # (ECMWF drops cycles after a few days)
     url = _url(date, cycle, lead, 'pf')
     idx = _get_with_retry(session, url[:-len('.grib2')] + '.index')
 

@@ -2,7 +2,7 @@
 
 Mirrors, feature-for-feature, the historical extraction scripts:
   - extract_gefs_mos_features.py       (gefs_mean_D*, gefs_spread_D*)
-  - extract_gefs_event_frac_exp6.py    (gefs_prob_dry_event, gefs_prob_wet_event)
+  - extract_gefs_event_frac_v4.py     (gefs_prob_dry_event, gefs_prob_wet_event; 31 members)
   - extract_atmos_future_exp6.py       (all 8 atmospheric roll vars + Z300 WD index —
                                          Reduced configs only use PWAT/CAPE of these)
 
@@ -28,7 +28,7 @@ DRY_MM = 1.0
 N_WORKERS = runtime.default_workers()
 
 MOS_MEMBERS   = ['gec00'] + [f'gep{i:02d}' for i in range(1, 31)]   # 31 — matches extract_gefs_mos_features.py
-EVENT_MEMBERS = [f'gep{i:02d}' for i in range(1, 31)]               # 30 — matches extract_gefs_event_frac_exp6.py
+EVENT_MEMBERS = MOS_MEMBERS   # 31 (control + 30) — matches extract_gefs_event_frac_v4.py (verification_v4)
 
 _LEAD_BASES = [3, 27, 51, 75, 99]
 APCP_LEADS = sorted({lead for b in _LEAD_BASES for lead in [b, b + 3, b + 9, b + 15, b + 21, b + 24]})
@@ -106,14 +106,15 @@ def compute_gefs_mos(cycle_root: str, cycle_hour: str | None = None):
     """Return (ens_mean, ens_spread): each (5,129,135) — matches extract_gefs_mos_features.py."""
     cycle_hour = cycle_hour or _detect_cycle_hour(cycle_root)
     member_fields = _load_all_members(cycle_root, cycle_hour, MOS_MEMBERS)
-    if len(member_fields) < 20:
-        raise RuntimeError(f'Only {len(member_fields)}/{len(MOS_MEMBERS)} GEFS members available')
+    if len(member_fields) != len(MOS_MEMBERS):
+        raise RuntimeError(f'Only {len(member_fields)}/{len(MOS_MEMBERS)} GEFS members available; '
+                           'all 31 members are required')
     stack = np.stack(member_fields, axis=0)   # (M,5,129,135)
     return stack.mean(axis=0), stack.std(axis=0)
 
 
 def compute_gefs_event_prob(cycle_root: str, cycle_hour: str | None = None):
-    """Return (prob_dry_event, prob_wet_event): each (129,135) — matches extract_gefs_event_frac_v2.py.
+    """Return (prob_dry_event, prob_wet_event): each (129,135) — matches extract_gefs_event_frac_v4.py (31 members).
 
     DRY: 3-consecutive-dry-day spell (< 1 mm) starting within D1-D3.
     WET: any day >= 1 mm within D1-D5 (same as AIFS, NCMRWF and the IMD labels;
@@ -121,8 +122,9 @@ def compute_gefs_event_prob(cycle_root: str, cycle_hour: str | None = None):
     """
     cycle_hour = cycle_hour or _detect_cycle_hour(cycle_root)
     member_fields = _load_all_members(cycle_root, cycle_hour, EVENT_MEMBERS)
-    if len(member_fields) < 20:
-        raise RuntimeError(f'Only {len(member_fields)}/{len(EVENT_MEMBERS)} GEFS members available')
+    if len(member_fields) != len(EVENT_MEMBERS):
+        raise RuntimeError(f'Only {len(member_fields)}/{len(EVENT_MEMBERS)} GEFS members available; '
+                           'all 31 members are required')
 
     dry_flags, wet_flags = [], []
     for daily in member_fields:

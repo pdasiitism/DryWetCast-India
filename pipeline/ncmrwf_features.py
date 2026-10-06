@@ -30,7 +30,7 @@ import xarray as xr
 from . import grid
 
 DRY_MM = 1.0
-MIN_MEMBERS = 10
+MIN_MEMBERS = 22
 
 
 def _read(path: str, init_date: str | None):

@@ -37,7 +37,7 @@ KEY_FILE = os.path.expanduser('~/.ncmrwf_api_key')
 REMOTE_DIR_ENV = 'NCMRWF_REMOTE_DIR'
 TIMEOUT = 120
 MAX_SEARCH_DEPTH = 4
-MIN_MEMBERS = 10   # same floor as ncmrwf_features
+MIN_MEMBERS = 22   # same floor as ncmrwf_features
 
 
 def cycle_names(date: str) -> list[str]:
