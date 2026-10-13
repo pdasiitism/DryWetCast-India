@@ -8,7 +8,7 @@ No cluster paths or private forecast inputs — everything needed for the core
 gridded forecast either ships in `models/` or is fetched live:
 - GEFS: `https://noaa-gefs-pds.s3.amazonaws.com` (NOAA public S3 bucket)
 - AIFS-ENS v2: `https://data.ecmwf.int/forecasts` (ECMWF public open-data feed),
-  or your own cluster's AIFS run (`--aifs-zarr`)
+  or the postprocessed NetCDF from your own cluster's AIFS run (`--aifs-file`)
 - NCMRWF (NEPS): the NCMRWF data portal `https://cloud.ncmrwf.gov.in` (needs
    API key), or files already on your machine (`--ncmrwf-file`)
 
@@ -152,7 +152,7 @@ Options:
   subdistrict probability pickle and PNG
 - `--download-only` / `--skip-download` — split downloading from processing (see "Running on a cluster")
 - `--workers N` — feature-extraction processes (default: CPUs available to this job, max 16)
-- `--aifs-zarr PATH` — use AIFS run locally on your cluster instead of downloading it (see below)
+- `--aifs-file PATH` — use the postprocessed output of an AIFS run on your cluster instead of downloading it (see below; `--aifs-zarr` remains a legacy alias)
 - `--cycle` — `00`/`06`/`12`/`18` (00Z is what every model was trained against)
 - `--check` — check this machine's setup, then exit
 
@@ -187,53 +187,49 @@ On a laptop none of this applies — just run the single command above.
 
 ## Using AIFS run on your own cluster (no AIFS download)
 
-**Current practice:** AIFS is downloaded from ECMWF's open-data feed (the
-default — nothing to set). **Once AIFS-ENS v2 is running operationally on
-the cluster**, switch to that run's output with `--aifs-zarr`; it's what the
-models were trained on, and reading it takes seconds instead of a ~10-minute
-download. Nothing else changes: it works with every config, GEFS is still
+By default AIFS is downloaded from ECMWF's open-data feed. When AIFS-ENS v2
+is run locally on the cluster, use its postprocessed NetCDF with `--aifs-file`.
+Reading the local file takes seconds and avoids the AIFS download. Nothing
+else changes: it works with every config, GEFS is still
 downloaded (it supplies the atmosphere fields, and GEFS rainfall for
 `gefs_*` configs), and NCMRWF still comes from the portal or `--ncmrwf-file`.
 
 ```bash
 python run_forecast.py --config gefs_reduced --date 20251114 \
-    --aifs-zarr /path/to/init_20251114T00.zarr
+    --aifs-file /path/to/aifs_v2_ens_operational/Outputs/postprocessed/init_20251114T00.nc
 
 # on a cluster without internet on compute nodes, --download-only now
 # fetches GEFS only
-python run_forecast.py --date 20251114 --download-only --aifs-zarr /path/to/init_20251114T00.zarr
+python run_forecast.py --date 20251114 --download-only \
+    --aifs-file /path/to/aifs_v2_ens_operational/Outputs/postprocessed/init_20251114T00.nc
 ```
 
-Needs the `zarr` package (`pip install zarr`) — optional, only for this mode.
-
-**Expected format** — the same as the stores the models were trained on
-(`/net/monsoon/prabal/AIFS_ens_v2/init_<YYYYMMDD>T00.zarr`), so a run
-produced the same way is used exactly as in training:
+**Expected operational NetCDF format:**
 
 | Array | Shape / content |
 |---|---|
-| `tp` | `(time=1, number, prediction_timedelta, lat, lon)`, **metres**, **6-hourly amounts** (not cumulative) |
+| `tp` | `(time=1, number, prediction_timedelta, lat, lon)`, **millimetres**, **6-hourly amounts** (not cumulative) |
 | `lat`, `lon` | the 129×135 India grid: lat 6.5–38.5, lon 66.5–100.0 at 0.25° (either lat order) |
 | `prediction_timedelta` | lead hours; must include every 6h from +6 to +126h (+6 to +102h is enough for Reduced configs) |
 | `number` | ensemble members, at least 20 (training used 51) |
 | `time` | init time, units `days since YYYY-MM-DD ...` |
 
-**Units differ between the two AIFS sources, and the pipeline handles each:**
-the cluster zarr stores `tp` in **metres** per 6 hours (training multiplied by
-1000 to get mm, and so does this pipeline), while the downloaded ECMWF
-open-data GRIB has `tp` in **kg/m² = mm**, cumulative since init, used as mm
-directly. (GDAL labels that field "TPRATE [kg/(m^2*s)]"; it is a naming quirk,
-the values are totals.) So a new cluster AIFS run must write `tp` in metres,
-like the training stores. If it writes mm by mistake, the run is refused
-(rainfall 1000× too large), and so is the opposite mistake (no rain anywhere).
+The operational AIFS postprocessing step converts raw `tp` from metres to
+**millimetres**. DryWetCast therefore reads the NetCDF values directly and
+does **not** multiply them by 1,000. Downloaded ECMWF open-data GRIB stores
+cumulative precipitation in kg/m² (= mm); the pipeline differences successive
+leads before making daily totals.
 
-The store is checked before use, and rejected with a clear message if its
+For backward compatibility, a legacy training-format `.zarr` store can also be
+passed to `--aifs-file` (or the old `--aifs-zarr` alias). In that legacy format,
+`tp` is in metres per 6 hours, so only that reader multiplies by 1,000. Reading
+legacy Zarr requires the optional `zarr` package.
+
+The local input is checked before use, and rejected with a clear message if its
 grid doesn't match, required lead hours are missing, it has too few
 members, its init date differs from `--date` (a wrong day's file), or its
 rainfall totals are implausible (the usual sign of wrong units or
-cumulative instead of 6-hourly values). Verified: for the 14 Nov 2025 store,
-every AIFS feature this produces is identical to the features the models
-were trained on for that date.
+cumulative instead of 6-hourly values).
 
 ## Archiving forecasts over time
 

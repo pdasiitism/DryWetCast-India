@@ -1,4 +1,4 @@
-"""AIFS-ENS v2 -> rainfall features for ONE forecast cycle, from either source:
+"""AIFS-ENS v2 -> rainfall features for ONE forecast cycle.
 
 1. Downloaded GRIB2 (download_aifs.py output, ECMWF open data), laid out as
      <cycle_root>/members/<member>/<member>.t<CC>z.f<LLL>.tp.grib2
@@ -7,8 +7,14 @@
    on ECMWF's global 0.25deg grid, so
    consecutive leads are differenced into 6-hourly amounts and regridded.
 
-2. A zarr store written by running AIFS locally on the cluster — the same
-   format the training data came from (/net/monsoon/prabal/AIFS_ens_v2/
+2. A postprocessed NetCDF written by the operational local AIFS run:
+     Outputs/postprocessed/init_<YYYYMMDD>T00.nc
+   `tp(time, number, prediction_timedelta, lat, lon)` is in millimetres for
+   each 6-hour period, already on the 129x135 target grid. It is read directly;
+   no unit conversion is applied here.
+
+3. A legacy zarr store — the same format the training data came from
+   (/net/monsoon/prabal/AIFS_ens_v2/
    init_<YYYYMMDD>T00.zarr): `tp(time, number, prediction_timedelta, lat, lon)`
    in metres, 6-hourly incremental amounts, already on the 129x135 target
    grid. Selected by passing a path ending in `.zarr`. Read exactly as
@@ -17,7 +23,7 @@
    init time) instead of assuming them, and refusing a store that doesn't
    match.
 
-Both sources are turned into the same (members, days, 129, 135) daily-mm
+All sources are turned into the same (members, days, 129, 135) daily-mm
 array, and every feature is computed from that by the same code below.
 
 Daily totals: 03Z-to-03Z, half-weighting the first and last 6-hourly period:
@@ -34,6 +40,7 @@ from functools import lru_cache
 from multiprocessing import Pool
 
 import numpy as np
+import xarray as xr
 
 from . import grid, runtime
 
@@ -59,18 +66,98 @@ def is_zarr(path: str) -> bool:
     return path.rstrip('/').endswith('.zarr')
 
 
+def is_postprocessed_nc(path: str) -> bool:
+    return path.rstrip('/').endswith('.nc')
+
+
 def _check_plausible(daily, source):
     domain_mean = float(np.nanmean(daily))
     if domain_mean > MAX_PLAUSIBLE_DOMAIN_MEAN_MM:
         raise ValueError(
             f'{source}: mean daily rainfall is {domain_mean:.0f} mm — implausible. The input '
-            'probably isn\'t in the expected units/accumulation (zarr: metres, 6-hourly amounts; '
-            'GRIB: cumulative since init).')
+            'probably isn\'t in the expected units/accumulation (postprocessed NetCDF: mm per '
+            '6 hours; legacy zarr: metres per 6 hours; GRIB: cumulative mm since init).')
     if float(np.nanmax(daily)) < MIN_PLAUSIBLE_ENSEMBLE_MAX_MM:
         raise ValueError(
             f'{source}: no member has even {MIN_PLAUSIBLE_ENSEMBLE_MAX_MM:.0f} mm on any day anywhere — '
-            'implausible; the input is probably in metres where mm was expected (zarr: metres; '
-            'GRIB: kg/m2 = mm).')
+            'implausible; the input is probably in the wrong units (postprocessed NetCDF: mm; '
+            'legacy zarr: metres; GRIB: kg/m2 = mm).')
+
+
+# ---------------------------------------------------------- postprocessed-NetCDF source
+
+@lru_cache(maxsize=2)
+def _daily_from_postprocessed_nc(nc_path: str, bases: tuple,
+                                 init_date: str | None) -> np.ndarray:
+    """Return daily mm from the operational AIFS postprocessed NetCDF."""
+    if not os.path.isfile(nc_path):
+        raise FileNotFoundError(f'AIFS postprocessed NetCDF not found: {nc_path}')
+
+    with xr.open_dataset(nc_path) as ds:
+        for key in ('tp', 'lat', 'lon', 'prediction_timedelta'):
+            if key not in ds.variables:
+                raise ValueError(f'{nc_path}: missing `{key}` — not an AIFS postprocessed file')
+
+        units = str(ds['tp'].attrs.get('units', '')).strip().lower()
+        accepted_mm = ('mm', 'millimeter', 'millimeters', 'millimetre', 'millimetres')
+        if units and units not in accepted_mm:
+            raise ValueError(f'{nc_path}: `tp` units are {units!r}; operational NetCDF must contain mm')
+
+        if init_date is not None and 'time' in ds.variables:
+            time_val = ds['time'].values[0]
+            file_init = None
+            if np.issubdtype(ds['time'].dtype, np.datetime64):
+                file_init = str(np.datetime64(time_val, 'D')).replace('-', '')
+            else:
+                time_units = ds['time'].attrs.get('units', '')
+                if time_units.startswith('days since '):
+                    epoch = datetime.strptime(time_units[len('days since '):][:10], '%Y-%m-%d')
+                    file_init = (epoch + timedelta(days=float(time_val))).strftime('%Y%m%d')
+            if file_init is not None and file_init != init_date:
+                raise ValueError(f'{nc_path} is initialised on {file_init}, but --date is {init_date}')
+
+        lat = ds['lat'].values
+        lon = ds['lon'].values
+        flip = lat[0] > lat[-1]
+        ordered_lat = lat[::-1] if flip else lat
+        if not (np.allclose(ordered_lat, grid.TARGET_LATS) and
+                np.allclose(lon, grid.TARGET_LONS)):
+            raise ValueError(f'{nc_path}: lat/lon grid is not the 129x135 target grid '
+                             f'(lat {lat[0]}..{lat[-1]}, lon {lon[0]}..{lon[-1]})')
+
+        raw_hours = ds['prediction_timedelta'].values
+        if np.issubdtype(raw_hours.dtype, np.timedelta64):
+            lead_hours = [int(h) for h in raw_hours / np.timedelta64(1, 'h')]
+        else:
+            lead_hours = [int(h) for h in raw_hours]
+        h2idx = {hour: i for i, hour in enumerate(lead_hours)}
+        missing = [h for h in _hours_for(bases) if h not in h2idx]
+        if missing:
+            raise ValueError(f'{nc_path}: missing lead hours {missing} needed for day(s) '
+                             f'{[LEAD_BASES.index(b) + 1 for b in bases]}')
+
+        tp_da = ds['tp']
+        if 'time' in tp_da.dims:
+            tp_da = tp_da.isel(time=0)
+        tp = np.asarray(
+            tp_da.transpose('number', 'prediction_timedelta', 'lat', 'lon').values,
+            dtype=np.float32,
+        )  # mm, incremental over each 6-hour period
+
+    if flip:
+        tp = tp[:, :, ::-1, :]
+    if tp.shape[0] < MIN_MEMBERS:
+        raise RuntimeError(f'{nc_path}: only {tp.shape[0]} members (need {MIN_MEMBERS})')
+
+    daily = np.zeros((tp.shape[0], len(bases), grid.N_LAT, grid.N_LON), dtype=np.float32)
+    for d, base in enumerate(bases):
+        i = [h2idx[base + off] for off in (6, 12, 18, 24, 30)]
+        day = (0.5 * tp[:, i[0]] + tp[:, i[1]] + tp[:, i[2]] +
+               tp[:, i[3]] + 0.5 * tp[:, i[4]])
+        np.clip(day, 0.0, None, out=day)
+        daily[:, d] = day
+    _check_plausible(daily, nc_path)
+    return daily
 
 
 # ---------------------------------------------------------------- zarr source
@@ -205,6 +292,8 @@ def _daily_from_grib(cycle_root: str, cycle_hour: str | None, bases: tuple) -> n
 
 def _daily(aifs_input: str, cycle_hour: str | None, bases, init_date: str | None) -> np.ndarray:
     bases = tuple(bases)
+    if is_postprocessed_nc(aifs_input):
+        return _daily_from_postprocessed_nc(aifs_input, bases, init_date)
     if is_zarr(aifs_input):
         return _daily_from_zarr(aifs_input, bases, init_date)
     return _daily_from_grib(aifs_input, cycle_hour, bases)
@@ -214,10 +303,11 @@ def compute_aifs_mos(aifs_input: str, cycle_hour: str | None = None, through_day
                      init_date: str | None = None):
     """Return (ens_mean, ens_spread): each (through_day,129,135); index [d] is day d+1.
 
-    `aifs_input` is a downloaded GRIB cycle folder or a local `.zarr` store.
+    `aifs_input` is a downloaded GRIB cycle folder, an operational `.nc` file,
+    or a legacy local `.zarr` store.
     `through_day` limits which days must be complete — Reduced models only need
     D1-D4 spread + D3 mean, so they run even without the +126h lead.
-    `init_date` (YYYYMMDD) is checked against a zarr store's own init time.
+    `init_date` (YYYYMMDD) is checked against the local file/store init time.
     """
     daily = _daily(aifs_input, cycle_hour, LEAD_BASES[:through_day], init_date)
     return np.nanmean(daily, axis=0), np.nanstd(daily, axis=0)

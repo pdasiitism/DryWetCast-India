@@ -16,7 +16,7 @@ from . import configs, runtime
 MIN_PYTHON = (3, 10)   # XGBoost 3.x (which saved the bundled models) and NumPy 2 both need it
 PACKAGES = ['numpy', 'rasterio', 'xarray', 'netCDF4', 'scipy', 'xgboost', 'matplotlib', 'requests']
 OPTIONAL_PACKAGES = {
-    'zarr': 'only needed for --aifs-zarr (AIFS run locally)',
+    'zarr': 'only needed for a legacy local AIFS .zarr store; operational .nc files do not need it',
     'pandas': 'only needed for the optional subdistrict product',
     'geopandas': 'only needed for the optional subdistrict map',
 }

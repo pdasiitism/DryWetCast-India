@@ -19,7 +19,8 @@ def cli(*args):
     (['--config', 'bogus', '--date', '20251114'], 'invalid choice'),
     (['--config', 'gefs_reduced'], '--date is required'),
     (['--date', '20251114', '--download-only', '--skip-download'], 'not allowed with'),
-    (['--config', 'gefs_reduced', '--date', '20251114', '--aifs-zarr', '/tmp/x.nc'], 'must be a .zarr'),
+    (['--config', 'gefs_reduced', '--date', '20251114', '--aifs-file', '/tmp/x.txt'], 'must be a postprocessed .nc'),
+    (['--config', 'gefs_reduced', '--date', '20251114', '--aifs-file', '/nonexistent/x.nc'], 'does not exist'),
     (['--config', 'gefs_reduced', '--date', '20251114', '--aifs-zarr', '/nonexistent/x.zarr'], 'does not exist'),
 ])
 def test_bad_arguments(args, message):

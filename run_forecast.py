@@ -36,9 +36,9 @@ Usage:
     python run_forecast.py --config gefs_reduced --date 20260920 --download-only
     python run_forecast.py --config gefs_reduced --date 20260920 --skip-download
 
-    # AIFS run locally on the cluster: read it from disk, download only GEFS.
+    # AIFS run locally on the cluster: read its postprocessed NetCDF, download only GEFS.
     python run_forecast.py --config gefs_reduced --date 20260920 \\
-        --aifs-zarr /path/to/init_20260920T00.zarr
+        --aifs-file /path/to/Outputs/postprocessed/init_20260920T00.nc
 
 Requires Python 3.10+ and: numpy, rasterio, xarray, netCDF4, scipy, xgboost,
 matplotlib, requests (`pip install -r requirements.txt`, or
@@ -73,7 +73,7 @@ def ncmrwf_dir(out_dir: str, date: str) -> str:
     return os.path.join(out_dir, f'ncmrwf_{date}')
 
 
-def download(date: str, cycle: str, out_dir: str, aifs_zarr: str | None = None,
+def download(date: str, cycle: str, out_dir: str, aifs_file: str | None = None,
              ncmrwf: bool = False) -> None:
     from pipeline import download_gefs, download_aifs, download_ncmrwf
 
@@ -88,8 +88,8 @@ def download(date: str, cycle: str, out_dir: str, aifs_zarr: str | None = None,
     download_gefs.download_cycle(date, cycle, os.path.join(out_dir, f'gefs_{date}_{cycle}z'))
     print(f'  done in {time.time()-t0:.0f}s', flush=True)
 
-    if aifs_zarr:
-        print(f'=== AIFS v2: using local store {aifs_zarr} — nothing to download ===', flush=True)
+    if aifs_file:
+        print(f'=== AIFS v2: using local input {aifs_file} — nothing to download ===', flush=True)
         return
     print(f'=== Downloading AIFS v2 ({date} {cycle}Z) ===', flush=True)
     t0 = time.time()
@@ -99,7 +99,7 @@ def download(date: str, cycle: str, out_dir: str, aifs_zarr: str | None = None,
 
 def run(config_name: str, date: str, cycle: str, out_dir: str, fig_out: str,
         skip_download: bool = False, ncmrwf_file: str | None = None,
-        archive_dir: str | None = None, aifs_zarr: str | None = None,
+        archive_dir: str | None = None, aifs_file: str | None = None,
         subdistrict_data_dir: str | None = None) -> dict:
     import matplotlib
     matplotlib.use('Agg')
@@ -113,7 +113,7 @@ def run(config_name: str, date: str, cycle: str, out_dir: str, fig_out: str,
     is_full = feature_set == 'full'
 
     gefs_root = os.path.join(out_dir, f'gefs_{date}_{cycle}z')
-    aifs_input = aifs_zarr or os.path.join(out_dir, f'aifs_{date}_{cycle}z')
+    aifs_input = aifs_file or os.path.join(out_dir, f'aifs_{date}_{cycle}z')
 
     fetch_ncmrwf = False
     if source == 'ncmrwf':
@@ -131,7 +131,7 @@ def run(config_name: str, date: str, cycle: str, out_dir: str, fig_out: str,
             fetch_ncmrwf = True
 
     if not skip_download:
-        download(date, cycle, out_dir, aifs_zarr, ncmrwf=fetch_ncmrwf)
+        download(date, cycle, out_dir, aifs_file, ncmrwf=fetch_ncmrwf)
 
     if fetch_ncmrwf:
         from pipeline import download_ncmrwf
@@ -150,7 +150,8 @@ def run(config_name: str, date: str, cycle: str, out_dir: str, fig_out: str,
             ncmrwf_file, init_date=date)
     print(f'  done in {time.time()-t0:.0f}s', flush=True)
 
-    print(f'=== Extracting AIFS features ({"local zarr" if aifs_zarr else "downloaded GRIB"}) ===', flush=True)
+    local_kind = 'local NetCDF/Zarr' if aifs_file else 'downloaded GRIB'
+    print(f'=== Extracting AIFS features ({local_kind}) ===', flush=True)
     t0 = time.time()
     through_day = 5 if is_full else 4
     aifs_mean, aifs_spread = aifs_features.compute_aifs_mos(
@@ -258,9 +259,10 @@ if __name__ == '__main__':
                     help='feature-extraction processes (default: CPUs available to this job, max 16)')
     p.add_argument('--ncmrwf-file', default=None,
                     help='NCMRWF plain file <init_date>.nc already on this machine (ncmrwf_* configs; default: download from the portal)')
-    p.add_argument('--aifs-zarr', default=None,
-                    help='AIFS run locally on this cluster: path to its init_<YYYYMMDD>T00.zarr store. '
-                         'AIFS is then read from disk instead of downloaded')
+    p.add_argument('--aifs-file', '--aifs-zarr', dest='aifs_file', default=None,
+                    help='AIFS run locally on this cluster: preferred path is the postprocessed '
+                         'init_<YYYYMMDD>T00.nc (tp in mm). Legacy .zarr stores in metres are also '
+                         'supported. AIFS is then read from disk instead of downloaded')
     p.add_argument('--archive-dir', default=None,
                     help='also save this run into an archive folder '
                          '(archive_dir/<config>/<date>_<cycle>.npz) for accumulating many cycles')
@@ -277,11 +279,15 @@ if __name__ == '__main__':
     if args.date is None or (args.config is None and not args.download_only):
         p.error('--date is required, and --config too unless using --download-only')
 
-    if args.aifs_zarr is not None:
-        if not args.aifs_zarr.rstrip('/').endswith('.zarr'):
-            p.error(f'--aifs-zarr must be a .zarr store (got {args.aifs_zarr})')
-        if not os.path.isdir(args.aifs_zarr):
-            p.error(f'--aifs-zarr: {args.aifs_zarr} does not exist')
+    if args.aifs_file is not None:
+        is_nc = args.aifs_file.endswith('.nc')
+        is_zarr = args.aifs_file.rstrip('/').endswith('.zarr')
+        if not (is_nc or is_zarr):
+            p.error(f'--aifs-file must be a postprocessed .nc file or legacy .zarr store '
+                    f'(got {args.aifs_file})')
+        exists = os.path.isfile(args.aifs_file) if is_nc else os.path.isdir(args.aifs_file)
+        if not exists:
+            p.error(f'--aifs-file: {args.aifs_file} does not exist')
 
     if args.download_only:
         from pipeline import download_ncmrwf
@@ -294,7 +300,7 @@ if __name__ == '__main__':
             if not want_ncmrwf:
                 print(f'=== NCMRWF: no API key set ({download_ncmrwf.KEY_ENV} or {download_ncmrwf.KEY_FILE}) '
                       '— skipping; ncmrwf_* configs will need --ncmrwf-file ===', flush=True)
-        download(args.date, args.cycle, args.out_dir, args.aifs_zarr, ncmrwf=want_ncmrwf)
+        download(args.date, args.cycle, args.out_dir, args.aifs_file, ncmrwf=want_ncmrwf)
         sys.exit(0)
 
     if args.workers is not None:
@@ -302,5 +308,5 @@ if __name__ == '__main__':
         gefs_features.N_WORKERS = aifs_features.N_WORKERS = max(1, args.workers)
 
     run(args.config, args.date, args.cycle, args.out_dir, args.fig_out,
-        args.skip_download, args.ncmrwf_file, args.archive_dir, args.aifs_zarr,
+        args.skip_download, args.ncmrwf_file, args.archive_dir, args.aifs_file,
         args.subdistrict_data_dir)

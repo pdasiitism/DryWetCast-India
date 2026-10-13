@@ -42,7 +42,7 @@ def test_aifs_unit_guard():
     rng = np.random.default_rng(2)
     daily_mm = rng.gamma(0.3, 10.0, size=(51, 5, 129, 135)).astype(np.float32)
     af._check_plausible(daily_mm, 'ok')                       # realistic mm: accepted
-    with pytest.raises(ValueError, match='metres where mm'):
+    with pytest.raises(ValueError, match='wrong units'):
         af._check_plausible(daily_mm / 1000, 'metres as mm')   # 1000x too small
     with pytest.raises(ValueError, match='implausible'):
         af._check_plausible(daily_mm * 1000, 'mm as metres')   # 1000x too large
