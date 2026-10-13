@@ -9,8 +9,14 @@ ncmrwf_2*/
 # Forecast outputs (default location + common output folders)
 /forecast_product_dry_wet.png
 /forecast_product_dry_wet.npz
+/forecast_product_dry_wet_outlook.png
+/forecast_product_dry_wet_subdistrict.png
+/forecast_product_dry_wet_subdistrict.pkl
 outputs/
 archive/
+
+# Large optional support-data bundle is distributed separately through Google Drive
+DryWetCast-Subdistrict-Data/
 
 # Secrets — the NCMRWF API key must never be committed
 .ncmrwf_api_key

@@ -15,7 +15,11 @@ from . import configs, runtime
 
 MIN_PYTHON = (3, 10)   # XGBoost 3.x (which saved the bundled models) and NumPy 2 both need it
 PACKAGES = ['numpy', 'rasterio', 'xarray', 'netCDF4', 'scipy', 'xgboost', 'matplotlib', 'requests']
-OPTIONAL_PACKAGES = {'zarr': 'only needed for --aifs-zarr (AIFS run locally)'}
+OPTIONAL_PACKAGES = {
+    'zarr': 'only needed for --aifs-zarr (AIFS run locally)',
+    'pandas': 'only needed for the optional subdistrict product',
+    'geopandas': 'only needed for the optional subdistrict map',
+}
 FEEDS = {
     'GEFS  (NOAA S3)': 'https://noaa-gefs-pds.s3.amazonaws.com/',
     'AIFS  (ECMWF)  ': 'https://data.ecmwf.int/forecasts/',

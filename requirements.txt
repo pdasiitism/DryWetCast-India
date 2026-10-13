@@ -7,4 +7,6 @@ xgboost>=3.0
 matplotlib>=3.8
 requests>=2.31
 zarr>=2.16          # reads AIFS from a cluster .zarr store (--aifs-zarr)
+pandas>=2.1         # optional subdistrict probability product
+geopandas>=0.14     # optional subdistrict probability map
 pytest>=7           # offline test suite: python -m pytest tests

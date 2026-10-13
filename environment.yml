@@ -19,4 +19,6 @@ dependencies:
   - matplotlib>=3.8
   - requests>=2.31
   - zarr>=2.16
+  - pandas>=2.1
+  - geopandas>=0.14
   - pytest>=7

@@ -4,8 +4,8 @@ Self-contained pipeline: downloads GEFS/NCMRWF + AIFS-ENS v2 data for one
 forecast cycle, extracts the predictor set, runs the bundled XGBoost
 weights, and produces DRY/WET probability maps over India.
 
-No cluster paths, no private data — everything needed either ships in
-`models/` or is fetched live:
+No cluster paths or private forecast inputs — everything needed for the core
+gridded forecast either ships in `models/` or is fetched live:
 - GEFS: `https://noaa-gefs-pds.s3.amazonaws.com` (NOAA public S3 bucket)
 - AIFS-ENS v2: `https://data.ecmwf.int/forecasts` (ECMWF public open-data feed),
   or your own cluster's AIFS run (`--aifs-zarr`)
@@ -109,16 +109,47 @@ readable NetCDF) before use, and re-running reuses files already downloaded.
 If the day's file isn't up yet, the run stops with that message before
 downloading anything else.
 
-Each run writes two files:
+Each run writes three files:
 - `forecast_product_dry_wet.png` — the DRY/WET probability maps (for viewing)
 - `forecast_product_dry_wet.npz` — the actual forecast record (for archiving):
   `p_dry`, `p_wet` as (129,135) float32 grids (NaN over sea), plus `lats`,
   `lons`, `date`, `cycle`, `config`. Exact, ~37KB per cycle, one `np.load`.
+- `forecast_product_dry_wet_outlook.png` — the same probabilities displayed
+  in fixed probability categories for a consistent medium-range weather outlook.
+
+### Optional subdistrict products
+
+The large, static subdistrict boundaries and area-weighting matrix are distributed
+separately so they do not make every Git clone hundreds of megabytes larger. The
+folder is named `DryWetCast-Subdistrict-Data` (about 425 MB).
+
+**Google Drive download:** [DryWetCast-Subdistrict-Data](https://drive.google.com/drive/folders/157K8rQw-7gLnFRWgBbAZVsdFQm4F3O-6?usp=drive_link)
+
+After downloading and extracting that folder, pass its path to the forecast:
+
+```bash
+python run_forecast.py --config ncmrwf_reduced --date 20260920 --cycle 00 \
+    --subdistrict-data-dir /path/to/DryWetCast-Subdistrict-Data
+```
+
+This adds two files beside the ordinary forecast products:
+
+- `forecast_product_dry_wet_subdistrict.pkl` — DRY/WET probabilities keyed by
+  subdistrict ID;
+- `forecast_product_dry_wet_subdistrict.png` — the two probability fields mapped
+  over Indian subdistricts.
+
+Instead of repeating the option, set
+`DRYWETCAST_SUBDISTRICT_DATA=/path/to/DryWetCast-Subdistrict-Data` in the job
+environment. The subdistrict values are the same gridded forecast probabilities,
+area-weighted onto the polygons; this step does not rerun the forecast models.
 
 Options:
 - `--out-dir` — where to cache downloaded GEFS/AIFS data (default `./_scratch`; ~1.2 GB per cycle)
 - `--fig-out` — output image path; the `.npz` is written next to it (default `./forecast_product_dry_wet.png`)
 - `--archive-dir` — also append this run into a growing archive (see below)
+- `--subdistrict-data-dir` — optional separate support-data folder; creates the
+  subdistrict probability pickle and PNG
 - `--download-only` / `--skip-download` — split downloading from processing (see "Running on a cluster")
 - `--workers N` — feature-extraction processes (default: CPUs available to this job, max 16)
 - `--aifs-zarr PATH` — use AIFS run locally on your cluster instead of downloading it (see below)
@@ -274,6 +305,8 @@ pipeline/
   ncmrwf_features.py    raw NCMRWF NetCDF -> Reduced + Full rainfall features for one cycle
   inference.py          assemble features (Reduced or Full), run the saved XGBoost weights
   archive.py            write/read the .npz forecast record and archive folder
+  outlook.py            fixed-category medium-range weather-outlook PNG
+  subdistrict.py        optional area-weighted subdistrict probabilities and PNG
   runtime.py            CPU count available to this job (scheduler-aware)
   check.py              the --check setup report
   train_weights.py      (one-time, needs private archive; VERIFICATION_ROOT) produces models/<config>/

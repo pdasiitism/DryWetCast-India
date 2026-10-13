@@ -3,7 +3,7 @@
 
 Self-contained: downloads GEFS/AIFS input data from public feeds (no
 credentials, no cluster/NFS paths), runs the bundled XGBoost weights for the
-chosen config, and writes out the DRY/WET probability maps. The only inputs
+chosen config, and writes out the DRY/WET probability products. The only inputs
 that ship with the repo are the trained model weights (models/<config>/),
 the land mask, and (Full configs only) a bundled climatology file — all
 small, static files.
@@ -26,6 +26,10 @@ Usage:
     python run_forecast.py --config ncmrwf_reduced --date 20260920            # NCMRWF from the portal
     python run_forecast.py --config ncmrwf_reduced --date 20260920 \\
         --ncmrwf-file /path/to/20260920.nc                                     # NCMRWF already on disk
+
+    # Optional subdistrict probability table and map (uses a separate data bundle).
+    python run_forecast.py --config ncmrwf_reduced --date 20260920 \\
+        --subdistrict-data-dir /path/to/DryWetCast-Subdistrict-Data
 
     # Cluster whose compute nodes have no internet: download on the login
     # node, then run the processing as a batch job.
@@ -95,12 +99,14 @@ def download(date: str, cycle: str, out_dir: str, aifs_zarr: str | None = None,
 
 def run(config_name: str, date: str, cycle: str, out_dir: str, fig_out: str,
         skip_download: bool = False, ncmrwf_file: str | None = None,
-        archive_dir: str | None = None, aifs_zarr: str | None = None) -> dict:
+        archive_dir: str | None = None, aifs_zarr: str | None = None,
+        subdistrict_data_dir: str | None = None) -> dict:
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
-    from pipeline import grid, gefs_features, aifs_features, ncmrwf_features, inference, archive
+    from pipeline import (aifs_features, archive, gefs_features, grid, inference,
+                          ncmrwf_features, outlook)
 
     cfg = configs.CONFIGS[config_name]
     source, feature_set = cfg['source'], cfg['feature_set']
@@ -212,6 +218,20 @@ def run(config_name: str, date: str, cycle: str, out_dir: str, fig_out: str,
     archive.save(npz_out, config_name, date, cycle, p_dry, p_wet)
     print(f'=== Saved forecast record -> {npz_out} ===', flush=True)
 
+    outlook_out = outlook.output_path(fig_out)
+    print(f'=== Saving weather outlook -> {outlook_out} ===', flush=True)
+    outlook.render(p_dry, p_wet, date, cycle, outlook_out,
+                   grid.TARGET_LATS, grid.TARGET_LONS)
+
+    if subdistrict_data_dir:
+        from pipeline import subdistrict
+        print('=== Aggregating and mapping subdistrict probabilities ===', flush=True)
+        products = subdistrict.generate(
+            p_dry, p_wet, grid.TARGET_LATS, grid.TARGET_LONS,
+            date, fig_out, subdistrict_data_dir)
+        print(f'=== Saved subdistrict probabilities -> {products["pickle"]} ===', flush=True)
+        print(f'=== Saved subdistrict map -> {products["png"]} ===', flush=True)
+
     if archive_dir:
         archived_path = archive.archive_path(archive_dir, config_name, date, cycle)
         archive.save(archived_path, config_name, date, cycle, p_dry, p_wet)
@@ -244,6 +264,11 @@ if __name__ == '__main__':
     p.add_argument('--archive-dir', default=None,
                     help='also save this run into an archive folder '
                          '(archive_dir/<config>/<date>_<cycle>.npz) for accumulating many cycles')
+    p.add_argument('--subdistrict-data-dir',
+                    default=os.environ.get('DRYWETCAST_SUBDISTRICT_DATA'),
+                    help='optional DryWetCast-Subdistrict-Data folder; when supplied, also '
+                         'write subdistrict probabilities and a subdistrict PNG '
+                         '(or set DRYWETCAST_SUBDISTRICT_DATA)')
     args = p.parse_args()
 
     if args.check:
@@ -277,4 +302,5 @@ if __name__ == '__main__':
         gefs_features.N_WORKERS = aifs_features.N_WORKERS = max(1, args.workers)
 
     run(args.config, args.date, args.cycle, args.out_dir, args.fig_out,
-        args.skip_download, args.ncmrwf_file, args.archive_dir, args.aifs_zarr)
+        args.skip_download, args.ncmrwf_file, args.archive_dir, args.aifs_zarr,
+        args.subdistrict_data_dir)
