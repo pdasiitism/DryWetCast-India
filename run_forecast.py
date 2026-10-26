@@ -216,7 +216,8 @@ def run(config_name: str, date: str, cycle: str, out_dir: str, fig_out: str,
     plt.close(fig)
 
     npz_out = os.path.splitext(fig_out)[0] + '.npz'
-    archive.save(npz_out, config_name, date, cycle, p_dry, p_wet)
+    archive.save(npz_out, config_name, date, cycle, p_dry, p_wet,
+                 raw_p_dry=rain_prob_dry, raw_p_wet=rain_prob_wet)
     print(f'=== Saved forecast record -> {npz_out} ===', flush=True)
 
     outlook_out = outlook.output_path(fig_out)
@@ -235,10 +236,14 @@ def run(config_name: str, date: str, cycle: str, out_dir: str, fig_out: str,
 
     if archive_dir:
         archived_path = archive.archive_path(archive_dir, config_name, date, cycle)
-        archive.save(archived_path, config_name, date, cycle, p_dry, p_wet)
+        archive.save(archived_path, config_name, date, cycle, p_dry, p_wet,
+                     raw_p_dry=rain_prob_dry, raw_p_wet=rain_prob_wet)
         print(f'=== Added to archive -> {archived_path} ===', flush=True)
 
-    return {'p_dry': p_dry, 'p_wet': p_wet}
+    return {
+        'p_dry': p_dry, 'p_wet': p_wet,
+        'raw_p_dry': rain_prob_dry, 'raw_p_wet': rain_prob_wet,
+    }
 
 
 if __name__ == '__main__':

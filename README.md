@@ -112,8 +112,10 @@ downloading anything else.
 Each run writes three files:
 - `forecast_product_dry_wet.png` — the DRY/WET probability maps (for viewing)
 - `forecast_product_dry_wet.npz` — the actual forecast record (for archiving):
-  `p_dry`, `p_wet` as (129,135) float32 grids (NaN over sea), plus `lats`,
-  `lons`, `date`, `cycle`, `config`. Exact, ~37KB per cycle, one `np.load`.
+  post-processed `p_dry`, `p_wet` and source-ensemble `raw_p_dry`,
+  `raw_p_wet` as (129,135) float32 grids, plus `lats`, `lons`, `date`,
+  `cycle`, `config`. The raw fields are the GEFS or NEPS member fractions
+  used as model inputs and allow direct verification of post-processing gain.
 - `forecast_product_dry_wet_outlook.png` — the same probabilities displayed
   in fixed probability categories for a consistent medium-range weather outlook.
 

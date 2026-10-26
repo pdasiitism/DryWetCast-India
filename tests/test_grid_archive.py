@@ -28,13 +28,35 @@ def test_climatology_uses_valid_date(init, doy, idx):
 def test_archive_round_trip(tmp_path):
     rng = np.random.default_rng(1)
     p_dry, p_wet = rng.random((129, 135)), rng.random((129, 135))
+    raw_p_dry, raw_p_wet = rng.random((129, 135)), rng.random((129, 135))
     p_dry[0, 0] = np.nan
     path = archive.archive_path(str(tmp_path), 'gefs_reduced', '20251114', '00')
-    archive.save(path, 'gefs_reduced', '20251114', '00', p_dry, p_wet)
+    archive.save(path, 'gefs_reduced', '20251114', '00', p_dry, p_wet,
+                 raw_p_dry=raw_p_dry, raw_p_wet=raw_p_wet)
     rec = archive.read_archive(str(tmp_path), config='gefs_reduced')[0]
     assert (rec['date'], rec['cycle'], rec['config']) == ('20251114', '00', 'gefs_reduced')
     np.testing.assert_array_equal(rec['p_dry'], p_dry.astype(np.float32))
+    np.testing.assert_array_equal(rec['raw_p_dry'], raw_p_dry.astype(np.float32))
+    np.testing.assert_array_equal(rec['raw_p_wet'], raw_p_wet.astype(np.float32))
     np.testing.assert_array_equal(rec['lats'], grid.TARGET_LATS)
+
+
+def test_archive_remains_backward_compatible_without_raw_fields(tmp_path):
+    p = np.zeros((129, 135), dtype=np.float32)
+    path = archive.archive_path(str(tmp_path), 'gefs_reduced', '20251114', '00')
+    archive.save(path, 'gefs_reduced', '20251114', '00', p, p)
+    rec = archive.load(path)
+    assert 'raw_p_dry' not in rec and 'raw_p_wet' not in rec
+
+
+def test_archive_rejects_incomplete_or_wrong_shape_raw_fields(tmp_path):
+    p = np.zeros((129, 135), dtype=np.float32)
+    path = archive.archive_path(str(tmp_path), 'gefs_reduced', '20251114', '00')
+    with pytest.raises(ValueError, match='supplied together'):
+        archive.save(path, 'gefs_reduced', '20251114', '00', p, p, raw_p_dry=p)
+    with pytest.raises(ValueError, match='raw_p_dry has shape'):
+        archive.save(path, 'gefs_reduced', '20251114', '00', p, p,
+                     raw_p_dry=np.zeros((2, 2)), raw_p_wet=p)
 
 
 def test_aifs_unit_guard():
